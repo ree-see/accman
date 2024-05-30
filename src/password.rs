@@ -1,14 +1,22 @@
+use aes_gcm::{
+    aead::{Aead, AeadCore, KeyInit, OsRng},
+    Aes256Gcm, Key, Nonce,
+};
+use hex;
+use rand::distributions::Alphanumeric;
 #[allow(unused)]
-
+use rand::Rng;
 use thiserror;
+
+const KEY_STR: &[u8; 32] = &[42; 32];
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct Password {
     value: String,
 }
 
-#[derive(thiserror::Error, Debug)]
-enum PasswordCreationError {
+#[derive(thiserror::Error, Debug, PartialEq)]
+pub enum PasswordCreationError {
     #[error("Password must be 8 characters long")]
     TooShort,
     #[error("Password cannot be longer than 256 characters long")]
@@ -18,13 +26,15 @@ enum PasswordCreationError {
 }
 
 impl Password {
-    pub fn new(input: String) -> Result<Password, PasswordCreationError> {
+    pub fn new(input: String, generate: bool) -> Result<Password, PasswordCreationError> {
         if input.len() < 8 {
             Err(PasswordCreationError::TooShort)
         } else if input.len() > 256 {
             Err(PasswordCreationError::TooLong)
-        } else if input.chars().all(char::is_alphanumeric) {
+        } else if !input.chars().all(char::is_alphanumeric) {
             Err(PasswordCreationError::NoSpecialChars)
+        } else if generate {
+            Ok(Self::generate(26))
         } else {
             Ok(Self { value: input })
         }
@@ -39,22 +49,59 @@ impl Password {
             Err(PasswordCreationError::TooShort)
         } else if new_password.len() > 256 {
             Err(PasswordCreationError::TooLong)
-        } else if new_password.chars().all(char::is_alphanumeric) {
+        } else if !new_password.chars().all(char::is_alphanumeric) {
             Err(PasswordCreationError::NoSpecialChars)
         } else {
             self.value = new_password;
             Ok(())
-        }    
+        }
     }
-        
+
     pub fn len(&self) -> usize {
         self.value.len()
     }
-}
 
-impl From<&str> for Password {
-    fn from(value: &str) -> Self {
-        Self { value: value.into() }
+    pub fn generate(length: usize) -> Result<Password, PasswordCreationError> {
+        println!("Password is being generated");
+        let value: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(length)
+            .map(char::from)
+            .collect();
+        println!("Password has been generated");
+        Password::try_from(value.as_str())
+    }
+
+    pub fn encrypt(&mut self) {
+        let plain_password = self.get_password();
+        let key = Key::<Aes256Gcm>::from_slice(KEY_STR);
+        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+
+        let cipher = Aes256Gcm::new(key);
+
+        let ciphered_data = cipher
+            .encrypt(&nonce, plain_password.as_bytes())
+            .unwrap();
+
+        let mut encrypted_password: Vec<u8> = nonce.to_vec();
+        encrypted_password.extend_from_slice(&ciphered_data);
+
+        self.value = hex::encode(encrypted_password);
+    }
+
+    pub fn decrypt(&self) {
+        let encrypted_password =
+            hex::decode(self.get_password()).expect("failed to decode hex string into vec");
+        let key = Key::<Aes256Gcm>::from_slice(KEY_STR);
+        let (nonce_arr, ciphered_data) = encrypted_password.split_at(12);
+        let nonce = Nonce::from_slice(nonce_arr);
+        let cipher = Aes256Gcm::new(key);
+
+        let plain_password = cipher
+            .decrypt(nonce, ciphered_data)
+            .unwrap();
+        self.value =
+            String::from_utf8(plain_password).unwrap();
     }
 }
 
@@ -66,10 +113,12 @@ impl TryFrom<&str> for Password {
             Err(PasswordCreationError::TooShort)
         } else if value.len() > 256 {
             Err(PasswordCreationError::TooLong)
-        } else if value.chars().all(char::is_alphanumeric) {
+        } else if !value.chars().all(char::is_alphanumeric) {
             Err(PasswordCreationError::NoSpecialChars)
         } else {
-            Ok(Self { value: value.into() })
+            Ok(Self {
+                value: value.into(),
+            })
         }
     }
 }
@@ -80,53 +129,71 @@ mod test {
 
     #[test]
     fn test_new_password() {
-        assert_eq!(Password { value: "password".into() }, Password::new("password".into()).unwrap());
+        assert_eq!(
+            Password {
+                value: "password".into()
+            },
+            Password::new("password".into(), false).unwrap()
+        );
     }
 
     #[test]
     fn test_get_password() {
-        let password = Password::new("password".into()).unwrap();
+        let password = Password::new("password".into(), false).unwrap();
         assert_eq!("password".to_string(), password.get_password());
     }
 
     #[test]
     fn test_set_password() {
-        let mut password = Password::new(String::from("password")).unwrap();
+        let mut password = Password::new(String::from("password"), false).unwrap();
         let _ = &password.set_password("Password".into());
-        assert_eq!(Password::new("Password".into()).unwrap(), password);
+        assert_eq!(Password::new("Password".into(), false).unwrap(), password);
     }
 
     #[test]
     fn test_password_from_string() {
-        let password = Password::from("password");
-        assert_eq!(Password::new("password".into()).unwrap(), password.clone());
+        let password = Password::try_from("password").unwrap();
+        assert_eq!(
+            Password::new("password".into(), false).unwrap(),
+            password.clone()
+        );
     }
 
     #[test]
     fn test_password_length() {
-        let password = Password::from("password");
+        let password = Password::try_from("password").unwrap();
         assert_eq!(password.get_password().len(), 8);
     }
 
     #[test]
     fn test_try_new_password_from_string() {
         let password = Password::try_from("password").unwrap();
-        assert_eq!(Password::from("password").unwrap(), password);
+        assert_eq!(Password::try_from("password").unwrap(), password);
     }
 
     #[test]
     fn test_password_validation() {
         let short_password = Password::try_from("pass").unwrap_err();
-        assert_eq!(short_password, Err(PasswordCreationError::TooShort));
-        
-        let long_password = "";
+        assert_eq!(short_password, PasswordCreationError::TooShort);
+
+        let mut long_password = "".to_string();
         for _ in 0..=256 {
-            long_password.push("a");
+            long_password.push('a');
         }
-        let long_password = Password::try_from(long_password).unwrap_err();
-        assert_eq!(long_password, Err(PasswordCreationError::TooLong));
+        let long_password = Password::new(long_password, false).unwrap_err();
+        assert_eq!(long_password, PasswordCreationError::TooLong);
 
         let special_char_password = Password::try_from("*(&**)&&&^");
-        assert_eq!(special_char_password, Err(PasswordCreationError::NoSpecialChars));
+        assert_eq!(
+            special_char_password,
+            Err(PasswordCreationError::NoSpecialChars)
+        );
+    }
+
+    #[test]
+    fn test_encrypt_password() {
+        let password = Password::try_from("password").unwrap();
+        let encrypted_password = password.clone().encrypt();
+        assert_ne!(password.get_password(), encrypted_password.get_password());
     }
 }

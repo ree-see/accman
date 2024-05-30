@@ -9,9 +9,14 @@ pub struct Account {
     // field email: string representing email associated with the apps account
     email: String,
     // filed password: password associated with the account
-    password: Password::Hashed,
+    password: SecurePassword,
     // field createdAt: time at which the account was created with accman
     createdAt: DateTime,
 }
 
-impl Account {}
+impl Account {
+
+    fn new(app_name: String, username: Option<String>, email: String, password: SecurePassword) -> Self {
+        todo!();
+    }
+}
