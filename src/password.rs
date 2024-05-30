@@ -13,6 +13,7 @@ const KEY_STR: &[u8; 32] = &[42; 32];
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct Password {
     value: String,
+    is_encrypted: bool,
 }
 
 #[derive(thiserror::Error, Debug, PartialEq)]
@@ -36,7 +37,7 @@ impl Password {
         } else if generate {
             Ok(Self::generate(26)?)
         } else {
-            Ok(Self { value: input })
+            Ok(Self { value: input, is_encrypted: false, })
         }
     }
 
@@ -57,7 +58,7 @@ impl Password {
         }
     }
 
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         self.value.len()
     }
 
@@ -87,6 +88,7 @@ impl Password {
         encrypted_password.extend_from_slice(&ciphered_data);
 
         self.value = hex::encode(encrypted_password);
+        self.is_encrypted = true;
         Ok(())
     }
 
@@ -103,6 +105,7 @@ impl Password {
             .unwrap();
         self.value =
             String::from_utf8(plain_password).unwrap();
+        self.is_encrypted = false;
         Ok(())
     }
 }
@@ -120,6 +123,7 @@ impl TryFrom<&str> for Password {
         } else {
             Ok(Self {
                 value: value.into(),
+                is_encrypted: false,
             })
         }
     }
@@ -133,7 +137,8 @@ mod test {
     fn test_new_password() {
         assert_eq!(
             Password {
-                value: "password".into()
+                value: "password".into(),
+                is_encrypted: false,
             },
             Password::new("password".into(), false).unwrap()
         );
@@ -201,5 +206,14 @@ mod test {
         let decrypted_password = password.get_password();
         println!("encrypted_password: {}", encrypted_password);
         assert_ne!(encrypted_password, decrypted_password);
+    }
+
+    #[test]
+    fn test_is_encrypted_toggle() {
+        let mut password = Password::try_from("password").unwrap();
+        let _ = password.encrypt();
+        assert_eq!(password.is_encrypted, true);
+        let _ = password.decrypt();
+        assert_eq!(password.is_encrypted, false);
     }
 }
