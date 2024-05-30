@@ -34,7 +34,7 @@ impl Password {
         } else if !input.chars().all(char::is_alphanumeric) {
             Err(PasswordCreationError::NoSpecialChars)
         } else if generate {
-            Ok(Self::generate(26))
+            Ok(Self::generate(26)?)
         } else {
             Ok(Self { value: input })
         }
@@ -72,7 +72,7 @@ impl Password {
         Password::try_from(value.as_str())
     }
 
-    pub fn encrypt(&mut self) {
+    pub fn encrypt(&mut self) -> Result<(), Box<dyn std::error::Error>>{
         let plain_password = self.get_password();
         let key = Key::<Aes256Gcm>::from_slice(KEY_STR);
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
@@ -87,9 +87,10 @@ impl Password {
         encrypted_password.extend_from_slice(&ciphered_data);
 
         self.value = hex::encode(encrypted_password);
+        Ok(())
     }
 
-    pub fn decrypt(&self) {
+    pub fn decrypt(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let encrypted_password =
             hex::decode(self.get_password()).expect("failed to decode hex string into vec");
         let key = Key::<Aes256Gcm>::from_slice(KEY_STR);
@@ -102,6 +103,7 @@ impl Password {
             .unwrap();
         self.value =
             String::from_utf8(plain_password).unwrap();
+        Ok(())
     }
 }
 
@@ -192,8 +194,12 @@ mod test {
 
     #[test]
     fn test_encrypt_password() {
-        let password = Password::try_from("password").unwrap();
-        let encrypted_password = password.clone().encrypt();
-        assert_ne!(password.get_password(), encrypted_password.get_password());
+        let mut password = Password::try_from("password").unwrap();
+        let _ = password.encrypt();
+        let encrypted_password = password.get_password();
+        let _ = password.decrypt();
+        let decrypted_password = password.get_password();
+        println!("encrypted_password: {}", encrypted_password);
+        assert_ne!(encrypted_password, decrypted_password);
     }
 }
