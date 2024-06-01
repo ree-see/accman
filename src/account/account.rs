@@ -1,6 +1,16 @@
 use chrono::{DateTime, Local};
 use crate::password::Password;
 use std::collections::BTreeMap;
+use thiserror;
+
+#[derive(Debug, thiserror::Error)]
+pub enum AccountStoreError {
+    #[error("An account with the app \"{0}\" does not exist")]
+    AccountDoesNotExist(String),
+    #[error("An account with the app \"{0}\" already exists")]
+    AccountAlreadyExists(String),
+    
+}
 
 #[derive(Debug)]
 pub struct AccountStore {
@@ -20,6 +30,14 @@ pub struct Account {
     password: Password,
     // field createdAt: local time at which the account was created with accman
     created_at: DateTime<Local>,
+}
+
+// I like this idea but idk if the best option
+pub enum ModifyAccount {
+    ModAppName(String),
+    ModUserName(Option<String>),
+    ModEmail(String),
+    ModPassword(Password),
 }
 
 impl Account {
@@ -52,7 +70,7 @@ impl Account {
 
 impl PartialEq for Account {
     fn eq(&self, other: &Self) -> bool {
-        (self.app_name == other.app_name) && (self.email == other.email)
+        (self.app_name == other.app_name) && (self.email == other.email) && (self.password == other.password)
     }
 }
 
@@ -69,11 +87,36 @@ impl AccountStore {
         self.count
     }
 
-    fn push(&mut self, mut account: Account) {
-        let app_name = account.get_app_name();
-        account.password.encrypt();
-        self.accounts.insert(app_name, account);
-        self.count += 1;
+    fn push(&mut self, mut account: Account) -> Result<(), AccountStoreError> {
+        if self.accounts.contains_key(&account.get_app_name()) == true {
+            return Err(AccountStoreError::AccountAlreadyExists(account.app_name))
+        } else {
+            let app_name = account.get_app_name();
+            account.password.encrypt();
+            self.accounts.insert(app_name, account);
+            self.count += 1;
+            Ok(())
+        }
+    }
+    
+    // for development sake this is not a viable method
+    fn modify_account(&mut self, app_name: String) -> Result<(), AccountStoreError> {
+        if !self.accounts.contains_key(&app_name) {
+            return Err(AccountStoreError::AccountDoesNotExist(app_name));
+        }
+        // idk the best way to implement this function
+        // option 1 create a whole new account and delete the old one
+        // option 2 allow the store to has access to editing accounts
+        Ok(())
+    }
+
+    fn delete_account(&mut self, app_name: String) -> Result<(), AccountStoreError> {
+        if !self.accounts.contains_key(&app_name) {
+            return Err(AccountStoreError::AccountDoesNotExist(app_name));
+        }
+        self.accounts.remove(&app_name);
+        self.count -= 1;
+        Ok(())
     }
 }
 
@@ -99,5 +142,22 @@ mod test {
             store.push(account.clone());
         }
         assert_eq!(store.count(), 3);
+    }
+
+    #[test]
+    fn test_deleting_account() {
+        let mut store = AccountStore::new();
+        let account = Account::new("google".into(), None, "reesee@gmail.com".into(), Password::generate(26).unwrap());
+        store.push(account);
+        store.delete_account("google".into());
+        assert_eq!(store.count(), 0);
+    }
+
+    #[test]
+    fn test_modify_app_name() {
+        let mut store = AccountStore::new();
+        let mut account = Account::new("ggoogle".into(), None, "reesee@gmail.com".into(), Password::generate(26).unwrap());
+        store.push(account);
+        store.modify_account(account.app_name)
     }
 }
