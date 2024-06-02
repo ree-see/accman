@@ -37,7 +37,10 @@ impl Password {
         } else if generate {
             Ok(Self::generate(26)?)
         } else {
-            Ok(Self { value: input, is_encrypted: false, })
+            Ok(Password {
+                value: input,
+                is_encrypted: false,
+            })
         }
     }
 
@@ -70,19 +73,17 @@ impl Password {
             .map(char::from)
             .collect();
         println!("Password has been generated");
-        Password::try_from(value.as_str())
+        Ok(Password::try_from(value.as_str())?)
     }
 
-    pub fn encrypt(&mut self) -> Result<(), Box<dyn std::error::Error>>{
+    pub fn encrypt(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let plain_password = self.get_password();
         let key = Key::<Aes256Gcm>::from_slice(KEY_STR);
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
 
         let cipher = Aes256Gcm::new(key);
 
-        let ciphered_data = cipher
-            .encrypt(&nonce, plain_password.as_bytes())
-            .unwrap();
+        let ciphered_data = cipher.encrypt(&nonce, plain_password.as_bytes()).unwrap();
 
         let mut encrypted_password: Vec<u8> = nonce.to_vec();
         encrypted_password.extend_from_slice(&ciphered_data);
@@ -100,11 +101,8 @@ impl Password {
         let nonce = Nonce::from_slice(nonce_arr);
         let cipher = Aes256Gcm::new(key);
 
-        let plain_password = cipher
-            .decrypt(nonce, ciphered_data)
-            .unwrap();
-        self.value =
-            String::from_utf8(plain_password).unwrap();
+        let plain_password = cipher.decrypt(nonce, ciphered_data).unwrap();
+        self.value = String::from_utf8(plain_password).unwrap();
         self.is_encrypted = false;
         Ok(())
     }
