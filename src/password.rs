@@ -1,3 +1,5 @@
+use core::fmt;
+
 use aes_gcm::{
     aead::{Aead, AeadCore, KeyInit, OsRng},
     Aes256Gcm, Key, Nonce,
@@ -26,6 +28,12 @@ pub enum PasswordCreationError {
     NoSpecialChars,
 }
 
+impl fmt::Display for Password {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.get_password().clone())
+    }
+}
+
 impl Password {
     pub fn new(input: String, generate: bool) -> Result<Password, PasswordCreationError> {
         if input.len() < 8 {
@@ -45,7 +53,13 @@ impl Password {
     }
 
     pub fn get_password(&self) -> String {
-        self.value.clone()
+        if self.is_encrypted {
+            let mut password = self.clone();
+            password.decrypt();
+            password.value
+        } else {
+            self.value.clone()
+        }
     }
 
     pub fn set_password(&mut self, new_password: String) -> Result<(), PasswordCreationError> {
@@ -94,14 +108,17 @@ impl Password {
     }
 
     pub fn decrypt(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        println!("encrypted_password go into hex decoder: {}", self.get_password());
         let encrypted_password =
             hex::decode(self.get_password()).expect("failed to decode hex string into vec");
+        println!("encrypted password hex decoder output: {:?}", encrypted_password);
         let key = Key::<Aes256Gcm>::from_slice(KEY_STR);
         let (nonce_arr, ciphered_data) = encrypted_password.split_at(12);
         let nonce = Nonce::from_slice(nonce_arr);
         let cipher = Aes256Gcm::new(key);
 
         let plain_password = cipher.decrypt(nonce, ciphered_data).unwrap();
+        println!("password decrypted vec: {:?}", plain_password);
         self.value = String::from_utf8(plain_password).unwrap();
         self.is_encrypted = false;
         Ok(())

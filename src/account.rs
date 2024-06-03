@@ -1,5 +1,6 @@
 use crate::password::Password;
 use chrono::{DateTime, Local};
+use core::fmt;
 use std::collections::BTreeMap;
 use thiserror;
 
@@ -64,6 +65,12 @@ impl PartialEq for Account {
     }
 }
 
+impl fmt::Display for Account {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "App Name: {}\n\tUsername: {:?}\n\tEmail: {}\n\tPassword: {}\n\tCreated At: {}", self.app_name, self.username, self.email, self.password, self.created_at)
+    }
+}
+
 impl AccountStore {
     pub fn new() -> Self {
         AccountStore {
@@ -117,12 +124,16 @@ impl AccountStore {
         Ok(())
     }
 
-    pub fn list_accounts(&self) {
+    // param show_password: bool
+    // if true should show password in plain text; 
+    // if false password should be `********`
+    pub fn list_accounts(&self, show_password: bool) {
         if self.accounts.is_empty() {
             println!("No accounts in the store");
         }
         for account in self.accounts.values() {
-            println!("{:?}", account);
+            let password = account.password.get_password();
+            println!("{}", account);
         }
     }
 }
