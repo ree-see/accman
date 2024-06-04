@@ -1,8 +1,9 @@
-use crate::password::Password;
+use crate::password::{Password, PasswordCreationError};
 use chrono::{DateTime, Local};
 use core::fmt;
 use std::collections::BTreeMap;
 use thiserror;
+use regex::Regex;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AccountStoreError {
@@ -32,6 +33,18 @@ pub struct Account {
     created_at: DateTime<Local>,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum AccountValidationError {
+    #[error("Invalid email")]
+    InvalidEmail,
+    #[error("Invalid password: {0}")]
+    InvalidPassword(PasswordCreationError),
+    #[error("App name must be provided")]
+    NoAppName,
+    #[error("Account already exists for {0}")]
+    AccountAlreadyExists(String),
+}
+
 // I like this idea but idk if the best option
 pub enum ModifyAccount {
     ModAppName(String),
@@ -41,19 +54,69 @@ pub enum ModifyAccount {
 }
 
 impl Account {
-    pub fn new(
-        app_name: String,
-        username: Option<String>,
-        email: String,
-        password: Password,
-    ) -> Self {
-        Self {
-            app_name,
-            username,
-            email,
-            password,
-            created_at: Local::now(),
+    pub fn new(app_name: String, username: Option<String>, email:String, password: Password) -> Result<Account, AccountValidationError> {
+        if app_name.len() == 0 {
+            return Err(AccountValidationError::NoAppName);
+        } else if !Self::validate_email(email.clone()) {
+            return Err(AccountValidationError::InvalidEmail);
+        } else { 
+            Ok(Account {
+                app_name,
+                username,
+                email,
+                password,
+                created_at: Local::now(),
+            })
         }
+         
+    }
+    pub fn from_input(
+        app_name: String,
+        username: String,
+        email: String,
+        password: (String, bool),
+    ) -> Result<Account, AccountValidationError> {
+        if app_name.len() == 0 {
+            return Err(AccountValidationError::NoAppName);
+        } else if !Self::validate_email(email.clone()) {
+            return Err(AccountValidationError::InvalidEmail);
+        } else if !Password::validate_input(password.0.clone()).ok().unwrap() {
+            let passsword_err = Password::new(password.0, password.1).unwrap_err();
+            return Err(AccountValidationError::InvalidPassword(passsword_err));
+        } else { 
+            if username.len() == 0 {
+                let username = None;
+                let password = Password::new(password.0, password.1).unwrap();
+                Ok(Account {
+                    app_name,
+                    username,
+                    email,
+                    password,
+                    created_at: Local::now(),
+                })
+            } else {
+                let username = Some(username);
+                let password = Password::new(password.0, password.1).unwrap();
+                Ok(Account {
+                    app_name,
+                    username,
+                    email,
+                    password,
+                    created_at: Local::now(),
+                })
+            }
+            
+        }
+    }
+
+    pub fn name(&self) -> String {
+        self.app_name.clone()
+    }
+
+    fn validate_email(email: String) -> bool {
+        let pattern = r"^[\w.+-]+@\w+\.\w{2,}$";
+        let regex = Regex::new(pattern).unwrap();
+        regex.is_match(email.as_str())
     }
 }
 
@@ -132,7 +195,6 @@ impl AccountStore {
             println!("No accounts in the store");
         }
         for account in self.accounts.values() {
-            let password = account.password.get_password();
             println!("{}", account);
         }
     }

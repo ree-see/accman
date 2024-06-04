@@ -30,7 +30,7 @@ pub enum PasswordCreationError {
 
 impl fmt::Display for Password {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.get_password().clone())
+        write!(f, "{}", self.get_password())
     }
 }
 
@@ -53,10 +53,10 @@ impl Password {
     }
 
     pub fn get_password(&self) -> String {
+        let mut password = self.clone();
         if self.is_encrypted {
-            let mut password = self.clone();
             password.decrypt();
-            password.value
+            password.get_password().clone()
         } else {
             self.value.clone()
         }
@@ -80,13 +80,11 @@ impl Password {
     }
 
     pub fn generate(length: usize) -> Result<Password, PasswordCreationError> {
-        println!("Password is being generated");
         let value: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
             .take(length)
             .map(char::from)
             .collect();
-        println!("Password has been generated");
         Ok(Password::try_from(value.as_str())?)
     }
 
@@ -122,6 +120,18 @@ impl Password {
         self.value = String::from_utf8(plain_password).unwrap();
         self.is_encrypted = false;
         Ok(())
+    }
+    
+    pub fn validate_input(input: String) -> Result<bool, PasswordCreationError> {
+         if input.len() < 8 {
+            Err(PasswordCreationError::TooShort)
+        } else if input.len() > 256 {
+            Err(PasswordCreationError::TooLong)
+        } else if !input.chars().all(char::is_alphanumeric) {
+            Err(PasswordCreationError::NoSpecialChars)
+        } else {
+            Ok(true)
+        }
     }
 }
 

@@ -2,12 +2,13 @@
 mod account;
 mod password;
 
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::str::FromStr;
 
 use crate::account::{Account, AccountStore};
 use crate::password::Password;
 
+use account::AccountValidationError;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -20,7 +21,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    Create,
+    Create {
+        #[arg(short, long)]
+        gen_password: bool,
+    },
     Delete {
         #[arg(short, long)]
         app_name: String,
@@ -33,45 +37,42 @@ enum Commands {
 }
 
 // a function to ask user to input the apps name, username/email, password 
-fn build_account() -> io::Result<Account> {
+fn build_account(gen_password: bool) -> Result<Account, AccountValidationError> {
     println!("Enter the details for this new account");
     // ask for app_name
     let mut app_name = String::new();
     println!("App name > ");
-    io::stdin().read_line(&mut app_name)?;
+    io::stdin().read_line(&mut app_name).unwrap();
+    let app_name = app_name.trim().to_string();
 
     // ask for username
     let mut username = String::new();
-    println!("Username (if no username leave it blank) > ");
-    io::stdin().read_line(&mut username)?;   
+    println!("Username (if no username, leave it blank) > ");
+    io::stdin().read_line(&mut username).unwrap();   
+    let username = username.trim().to_string();
 
     // ask for email
     let mut email = String::new();
     println!("Email >");
-    io::stdin().read_line(&mut email)?;
+    io::stdin().read_line(&mut email).unwrap();
+    let email = email.trim().to_string();
 
-    // ask if they want a generated password
-    let mut is_gen_str = String::new();
-    println!("Would you like to generate a password? y/n > ");
-    io::stdin().read_line(&mut is_gen_str)?;
-    let is_gen_str = is_gen_str.trim();
+    // ask for password
+    let mut password = String::new();
+    io::stdin().read_line(&mut password).unwrap();
+    let password = password.trim().to_string();
 
-    let mut password_str = String::new();
-    if is_gen_str == "y" {
-        println!("Password is being generated");
-    } else if is_gen_str == "n" {
-        println!("Password > ");
-        io::stdin().read_line(&mut password_str)?;
-    } else {
-        println!("_ variant ran: [is_gen_str = {:?}]", is_gen_str);
-        // need some error and ask for input again
-        todo!()
-    }
-
-    let password = password_str.trim().to_string();
-    let password = Password::new(password, false).unwrap();
-    let account = Account::new(app_name.trim().to_string(), Some(username.trim().to_string()), email.trim().to_string(), password);
+    let account = Account::from_input(app_name, username, email, (password, gen_password)).unwrap();
     println!("\nAccount has been create\n\n{}", account);
+
+    // ask to confrim the account info
+    let mut redo_str = String::new();
+    println!("Confirm the account info is correct? y/n");
+    io::stdin().read_line(&mut redo_str);
+    if redo_str.trim() == "n" {
+        build_account(gen_password);
+    }
+    println!("\nAccount \"{}\" was saved", account.name());
     Ok(account)
 }
 
@@ -84,19 +85,19 @@ fn main() {
         None,
         "reesee@gmail.com".into(),
         Password::new("password".into(), false).unwrap(),
-    ));
+    ).unwrap());
 
     match &cli.command {
         Some(Commands::List { password }) => {
-            println!("Listing accounts...");
+            println!("Listing accounts...\n");
             match *password {
                 true => { store.list_accounts(*password) },
                 false => { store.list_accounts(!password) },
             }
-            println!("Done listing accounts.");
+            println!("\nDone listing accounts.");
         }
-        Some(Commands::Create) => {
-            let account = build_account().unwrap();
+        Some(Commands::Create { gen_password }) => {
+            let account = build_account(*gen_password).unwrap();
             store.push(account);
         }
         Some(Commands::Delete { app_name }) => {
